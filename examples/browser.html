@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  A page that checks a config and runs a command with a local build.
+    bun run build && bun scripts/build.ts --repo <Xray-core clone> --tags v26.10.21
+    bun scripts/serve.ts            # then open http://localhost:8787/examples/browser.html
+  Against the published binaries, set BASE to https://bropines.github.io/xray-wasm/.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xray-wasm example</title>
+<style>
+  :root { color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif; }
+  body { max-width: 52rem; margin: 2rem auto; padding: 0 1rem; }
+  textarea, input, select { width: 100%; box-sizing: border-box; font: 13px ui-monospace, monospace; }
+  pre { white-space: pre-wrap; background: color-mix(in srgb, currentColor 6%, transparent); padding: .75rem; border-radius: 6px; }
+  button { margin: .5rem .5rem .5rem 0; }
+</style>
+</head>
+<body>
+<h1>xray-wasm</h1>
+<label>Tag <select id="tag"></select></label>
+<p id="progress"></p>
+<textarea id="config" rows="10">{
+  "inbounds": [{ "listen": "127.0.0.1", "port": 10808, "protocol": "socks" }],
+  "outbounds": [{ "protocol": "freedom" }]
+}</textarea>
+<button id="check">Check</button>
+<input id="args" value="x25519">
+<button id="run">Run</button>
+<pre id="out"></pre>
+<script type="module">
+  import { createXray } from '../dist/index.js';
+
+  const BASE = new URL('../dist-wasm/', location.href);
+  const xray = createXray({ baseUrl: BASE });
+  const $ = id => document.getElementById(id);
+  const show = value => { $('out').textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2); };
+
+  const manifest = await xray.manifest();
+  for (const build of [...manifest.builds].reverse()) $('tag').add(new Option(`${build.tag} (${build.channel ?? ''})`, build.tag));
+  const progress = (loaded, total) => { $('progress').textContent = `${(loaded / 2 ** 20).toFixed(1)} / ${(total / 2 ** 20).toFixed(1)} MiB`; };
+
+  $('check').onclick = async () => {
+    const tag = $('tag').value;
+    await xray.prepare(tag, progress);
+    const result = await xray.check($('config').value, { tag });
+    window.lastResult = result;
+    show(result);
+  };
+  $('run').onclick = async () => {
+    const tag = $('tag').value;
+    await xray.prepare(tag, progress);
+    const result = await xray.run($('args').value.split(/\s+/).filter(Boolean), { tag });
+    window.lastResult = result;
+    show(`exit ${result.exitCode}\n${result.stdout}${result.stderr}${Object.keys(result.files).map(f => `\nwrote ${f}`).join('')}`);
+  };
+</script>
+</body>
+</html>
