@@ -1,0 +1,25 @@
+{
+  "$comment": "Which Xray-core releases are built: every release from `floor` up, stable and prerelease alike, plus `extra` (`tag@commit` = tag deleted upstream, built from that commit, channel withdrawn). `releases` is a snapshot of the GitHub API that scripts/upstream.ts refreshes (.github/workflows/upstream.yml); builds read only this file. `unsupported`: tags left out, with the reason.",
+  "floor": "v26.3.27",
+  "extra": [
+    "v26.10.10@701af607"
+  ],
+  "unsupported": {},
+  "releases": [
+    {"tag":"v26.10.21","prerelease":false,"publishedAt":"2026-10-21T12:07:11Z"},
+    {"tag":"v26.9.30","prerelease":true,"publishedAt":"2026-09-30T07:41:08Z"},
+    {"tag":"v26.9.9","prerelease":true,"publishedAt":"2026-09-08T22:28:10Z"},
+    {"tag":"v26.7.28","prerelease":true,"publishedAt":"2026-07-28T08:00:45Z"},
+    {"tag":"v26.7.11","prerelease":true,"publishedAt":"2026-07-11T15:56:30Z"},
+    {"tag":"v26.6.27","prerelease":true,"publishedAt":"2026-06-27T13:20:31Z"},
+    {"tag":"v26.6.22","prerelease":true,"publishedAt":"2026-06-22T18:56:38Z"},
+    {"tag":"v26.6.1","prerelease":true,"publishedAt":"2026-06-01T02:12:09Z"},
+    {"tag":"v26.5.9","prerelease":true,"publishedAt":"2026-05-09T17:39:33Z"},
+    {"tag":"v26.5.3","prerelease":true,"publishedAt":"2026-05-03T11:55:19Z"},
+    {"tag":"v26.4.25","prerelease":true,"publishedAt":"2026-04-25T23:17:49Z"},
+    {"tag":"v26.4.17","prerelease":true,"publishedAt":"2026-04-17T23:05:34Z"},
+    {"tag":"v26.4.15","prerelease":true,"publishedAt":"2026-04-15T23:57:14Z"},
+    {"tag":"v26.4.13","prerelease":true,"publishedAt":"2026-04-13T22:51:31Z"},
+    {"tag":"v26.3.27","prerelease":false,"publishedAt":"2026-03-27T17:51:11Z"}
+  ]
+}
