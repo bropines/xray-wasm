@@ -1,0 +1,7 @@
+{
+  "$comment": "Optional tag ranges for the files in go/shims/. A shim joins a build only when its package is a dependency of that tag's main package (sing, for one, is gone from v26.9.30 on) and the tag is within `from`..`until` (inclusive) when those are given. Add a range here when a tag defines a name itself, rather than editing the shim.",
+  "github.com/sagernet/sing/common/bufio/tosockaddr_js.go": {},
+  "golang.org/x/sys/unix/flock_js.go": {},
+  "golang.org/x/sys/unix/vectorised_js.go": {},
+  "syscall/rawsockaddrunix_js.go": {}
+}
