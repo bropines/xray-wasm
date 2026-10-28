@@ -92,7 +92,9 @@ describe.skipIf(!built)(`createXray on ${build?.tag ?? 'a built tag'}`, () => {
 const workerScript = join(import.meta.dir, '..', 'dist', 'worker.js');
 describe.skipIf(!built || !existsSync(workerScript))('createXray in a Worker (dist/)', () => {
     test('check and run through the worker', async () => {
-        const { createXray: create } = await import('../dist/index.js') as typeof import('../src/index');
+        // A computed specifier: tsc must not need dist/ to typecheck a clean checkout.
+        const distIndex = pathToFileURL(join(import.meta.dir, '..', 'dist', 'index.js')).href;
+        const { createXray: create } = await import(distIndex) as typeof import('../src/index');
         const xray = create({ baseUrl: BASE, fetch: diskFetch, workerUrl: pathToFileURL(workerScript) });
         try {
             expect((await xray.check(config, { tag: build.tag })).verdict).toBe('ok');
