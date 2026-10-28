@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       release:
-        description: Release of this repo to publish (default: the latest)
+        description: 'Release of this repo to publish (default: the latest)'
         required: false
 
 permissions:

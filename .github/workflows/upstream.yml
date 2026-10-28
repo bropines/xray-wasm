@@ -85,4 +85,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ADDED: ${{ steps.upstream.outputs.added }}
-        run: gh issue create --title "New Xray-core release does not build or pass smoke tests: $ADDED" --body-file report.md
+        run: |
+          gh issue create --title "New Xray-core release does not build or pass smoke tests: $ADDED" --body-file report.md
