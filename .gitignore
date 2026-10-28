@@ -1,0 +1,10 @@
+# Binaries are built, never committed.
+/dist-wasm/
+/dist-wasm-check/
+/release/
+# Scratch: extracted Xray-core sources and the Go module cache.
+/.work/
+/dist/
+node_modules/
+*.tgz
+.DS_Store
