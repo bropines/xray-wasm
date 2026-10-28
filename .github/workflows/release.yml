@@ -1,0 +1,137 @@
+name: Release
+
+# On a version tag of this repo: build every tag in versions.json (one job
+# each), smoke-test each, then one job assembles the manifest and the GitHub
+# Release. A tag that fails to build is left out and named in the release
+# notes instead of blocking the release. pages.yml publishes the same files.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tags:
+    runs-on: ubuntu-latest
+    outputs:
+      tags: ${{ steps.set.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - id: set
+        run: echo "tags=$(bun scripts/versions.ts --json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: tags
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        tag: ${{ fromJSON(needs.tags.outputs.tags) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: false
+      - run: bun install --frozen-lockfile
+      - name: Clone Xray-core
+        # Blobless with full history: v26.10.10's tag is gone upstream and is taken by commit.
+        run: git clone --filter=blob:none --no-checkout https://github.com/XTLS/Xray-core.git "$RUNNER_TEMP/Xray-core"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/work/gomodcache
+          key: gomod-${{ matrix.tag }}-${{ hashFiles('scripts/build.ts') }}
+          restore-keys: gomod-
+      - name: Build
+        run: bun scripts/build.ts --repo "$RUNNER_TEMP/Xray-core" --work "$RUNNER_TEMP/work" --tags "${{ matrix.tag }}"
+      - name: Smoke test
+        run: bun scripts/smoke.ts --tags "${{ matrix.tag }}"
+      - name: Keep only the gzip copy
+        run: rm "dist-wasm/${{ matrix.tag }}/xray.wasm"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-${{ matrix.tag }}
+          path: dist-wasm/${{ matrix.tag }}/
+          retention-days: 7
+
+  release:
+    needs: [tags, build]
+    if: ${{ !cancelled() && needs.tags.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      # wasm_exec.js must come from the Go that built the binaries.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: false
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wasm-*
+          path: dist-wasm
+      - name: Folders named by tag
+        run: |
+          cd dist-wasm
+          for d in wasm-*; do mv "$d" "${d#wasm-}"; done
+          ls
+      - name: Manifest
+        run: bun scripts/build.ts --manifest-only --out dist-wasm
+      - name: Release assets
+        run: bun scripts/publish.ts --from dist-wasm --release release
+      - name: npm tarball
+        run: |
+          npm pack --pack-destination release
+          ls -la release
+      - name: Notes
+        env:
+          WANTED: ${{ needs.tags.outputs.tags }}
+        run: |
+          bun -e '
+            const wanted = JSON.parse(process.env.WANTED);
+            const m = JSON.parse(require("fs").readFileSync("release/manifest.json", "utf8"));
+            const built = m.builds.map(b => b.tag);
+            const missing = wanted.filter(t => !built.includes(t));
+            const rows = [...m.builds].reverse().map(b => `| ${b.tag} | ${b.channel ?? ""} | ${(b.gzip / 2 ** 20).toFixed(1)} MiB | \`${b.commit?.slice(0, 8) ?? ""}\` |`);
+            const notes = [
+              `Xray-core compiled to WebAssembly from unmodified upstream source, ${built.length} releases, ${m.wasmExec.go}.`,
+              "",
+              "Load from GitHub Pages: `createXray({ baseUrl: \"https://bropines.github.io/xray-wasm/\" })`. Release assets are for mirroring: GitHub does not send CORS headers for them.",
+              "",
+              "| Xray-core | Channel | Download | Commit |", "|---|---|---|---|", ...rows,
+              ...(missing.length ? ["", `Not built this time: ${missing.join(", ")} (see the workflow log).`] : []),
+            ];
+            require("fs").writeFileSync("release/NOTES.md", notes.join("\n") + "\n");
+          '
+          cat release/NOTES.md
+      - name: Keep the assets (a run by hand makes no release)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release/
+          retention-days: 7
+      - name: Create the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          notes=release/NOTES.md
+          files=$(ls release/* | grep -v NOTES.md)
+          gh release create "$tag" $files --title "xray-wasm $tag" --notes-file "$notes" --verify-tag

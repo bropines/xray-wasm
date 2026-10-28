@@ -1,0 +1,60 @@
+name: Pages
+
+# Publish the binaries of a release to GitHub Pages, so a page anywhere can
+# load them from https://bropines.github.io/xray-wasm/ (Pages answers with
+# Access-Control-Allow-Origin: *; release assets do not). Gzip copies only,
+# so the site stays far below Pages' 1 GB limit.
+#
+# Runs after the Release workflow (a release made with GITHUB_TOKEN does not
+# fire `release` events), or by hand for any release.
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release of this repo to publish (default: the latest)
+        required: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Download the release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          mkdir assets
+          if [ -n "$RELEASE" ]; then ref="$RELEASE"; else ref="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)"; fi
+          echo "publishing $ref"
+          gh release download "$ref" --repo "$GITHUB_REPOSITORY" --dir assets --pattern '*.xray.wasm.gz' --pattern manifest.json --pattern wasm_exec.js
+      - name: Lay out the site
+        run: |
+          bun scripts/publish.ts --from assets --pages site
+          du -sh site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,88 @@
+name: Upstream
+
+# Weekly (and by hand): read XTLS/Xray-core's releases from the GitHub API,
+# and when the build set changes (a new release, stable or prerelease, above
+# versions.json's floor), build and smoke-test the new tags and open a pull
+# request updating versions.json. Never releases anything itself: merging the
+# PR and pushing a tag of this repo does that (release.yml).
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Refresh versions.json
+        id: upstream
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun scripts/upstream.ts --write --github-output "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v5
+        if: steps.upstream.outputs.changed == 'true'
+        with:
+          go-version: '1.27'
+          cache: false
+      - name: Build and smoke-test the new tags
+        id: build
+        if: steps.upstream.outputs.changed == 'true' && steps.upstream.outputs.added != '[]'
+        env:
+          ADDED: ${{ steps.upstream.outputs.added }}
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/XTLS/Xray-core.git "$RUNNER_TEMP/Xray-core"
+          tags=$(echo "$ADDED" | bun -e 'console.log(JSON.parse(await Bun.stdin.text()).join(","))')
+          : > report.md
+          ok=true
+          if bun scripts/build.ts --repo "$RUNNER_TEMP/Xray-core" --work "$RUNNER_TEMP/work" --tags "$tags" --keep-going > build.log 2>&1; then
+            echo "Built: $tags" >> report.md
+          else
+            ok=false
+            echo "Some tags did not build:" >> report.md
+          fi
+          echo '```' >> report.md; tail -n 40 build.log >> report.md; echo '```' >> report.md
+          if [ -f dist-wasm/manifest.json ]; then
+            if bun scripts/smoke.ts > smoke.log 2>&1; then echo "Smoke tests passed." >> report.md; else ok=false; echo "Smoke tests failed:" >> report.md; fi
+            echo '```' >> report.md; grep -E 'FAIL|^v[0-9]|cases' smoke.log | tail -n 60 >> report.md; echo '```' >> report.md
+          fi
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+      - name: Open a pull request
+        if: steps.upstream.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ADDED: ${{ steps.upstream.outputs.added }}
+          REMOVED: ${{ steps.upstream.outputs.removed }}
+        run: |
+          branch="upstream/$(date -u +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add versions.json
+          git commit -m "versions: add $ADDED" -m "Refreshed from the GitHub API by upstream.yml."
+          git push --force origin "$branch"
+          {
+            echo "New Xray-core releases in the build set: $ADDED"
+            echo "Removed: $REMOVED"
+            echo
+            [ -f report.md ] && cat report.md
+            echo
+            echo "Merging this and pushing a tag of this repo makes a release. (A PR opened with the workflow token does not run CI; close and reopen it to run it.)"
+          } > body.md
+          gh pr create --title "Add Xray-core $ADDED" --body-file body.md --head "$branch" --base main || gh pr edit "$branch" --body-file body.md
+      - name: Open an issue when a new tag does not build or pass
+        if: steps.build.outputs.ok == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ADDED: ${{ steps.upstream.outputs.added }}
+        run: gh issue create --title "New Xray-core release does not build or pass smoke tests: $ADDED" --body-file report.md

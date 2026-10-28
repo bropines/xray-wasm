@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Unit tests (the end-to-end ones skip without binaries)
+        run: bun test
+      - name: Build the package
+        run: bun run build
+      - name: npm pack
+        run: npm pack --dry-run
+
+  # One tag, the newest in versions.json: enough to catch a broken build
+  # script, shim or runner without building all of them on every push.
+  wasm:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: false
+      - run: bun install --frozen-lockfile
+      - name: Pick the newest tag
+        id: tag
+        run: echo "tag=$(bun scripts/versions.ts | tail -n 1)" >> "$GITHUB_OUTPUT"
+      - name: Clone Xray-core
+        # Blobless: every tag and commit, contents fetched on demand by `git archive`.
+        run: git clone --filter=blob:none --no-checkout https://github.com/XTLS/Xray-core.git "$RUNNER_TEMP/Xray-core"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/work/gomodcache
+          key: gomod-${{ steps.tag.outputs.tag }}-${{ hashFiles('scripts/build.ts') }}
+          restore-keys: gomod-
+      - name: Build ${{ steps.tag.outputs.tag }}
+        run: bun scripts/build.ts --repo "$RUNNER_TEMP/Xray-core" --work "$RUNNER_TEMP/work" --tags "${{ steps.tag.outputs.tag }}"
+      - name: Smoke test
+        run: bun scripts/smoke.ts --tags "${{ steps.tag.outputs.tag }}"
+      - name: End-to-end tests against the binary
+        run: bun run build && bun test
