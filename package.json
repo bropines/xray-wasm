@@ -1,6 +1,6 @@
 {
   "name": "xray-wasm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Xray-core's own xray command, compiled to WebAssembly from unmodified release tags: check configs like `xray run -test` and run the offline CLI in the browser.",
   "license": "MPL-2.0",
   "author": "bropines",

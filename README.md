@@ -19,7 +19,7 @@ console.log(keys.stdout); // PrivateKey: …  Password (PublicKey): …
 Install from a release tarball (no npm registry yet; zero runtime dependencies):
 
 ```sh
-bun add https://github.com/bropines/xray-wasm/releases/download/v0.1.0/xray-wasm-0.1.0.tgz
+bun add https://github.com/bropines/xray-wasm/releases/download/v0.2.0/xray-wasm-0.2.0.tgz
 ```
 
 ## Pick the version you need
